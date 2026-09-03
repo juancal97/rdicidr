@@ -1,0 +1,17 @@
+node_modules
+build
+coverage
+.git
+.github
+.gitignore
+.gitattributes
+terraform
+*.md
+.env
+.env.*
+.dockerignore
+Dockerfile
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store

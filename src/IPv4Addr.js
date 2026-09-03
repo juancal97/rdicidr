@@ -5,7 +5,7 @@ import React, { useState } from "react";
 import { IPv4 } from "./lib/ipv4";
 import "./IPv4Addr.css";
 
-const IPv4Addr = (props) => {
+const IPv4Addr = () => {
   const [ipv4, setIpv4] = useState(new IPv4([10, 0, 8, 0], 21));
   const [validAddress, setValidAddress] = useState(true);
   const [showSubnetting, setShowSubnetting] = useState(true);
@@ -37,7 +37,7 @@ const IPv4Addr = (props) => {
       netmasksElements.push(
         <div key={`networkAddress-${index}`}>
           {e.networkAddress}/{e.netmask} ({e.count} hosts)
-        </div>
+        </div>,
       );
     });
     return netmasksElements;
