@@ -1,0 +1,108 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - devel
+      - stage
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: "488463488153"
+  ECR_REPOSITORY: rdicidr
+  TF_VERSION: "1.15.8"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Gates on the GitHub Environment of the same name.
+    # `stage` has a required reviewer, so it waits for manual approval here.
+    environment: ${{ github.ref_name }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Resolve deployment variables
+        id: vars
+        run: |
+          ENV="${{ github.ref_name }}"
+          REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          {
+            echo "env=${ENV}"
+            echo "role_arn=arn:aws:iam::${AWS_ACCOUNT_ID}:role/rdicidr-cd-${ENV}"
+            echo "registry=${REGISTRY}"
+            echo "image=${REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ steps.vars.outputs.role_arn }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Check whether the image tag already exists
+        id: image
+        run: |
+          if aws ecr describe-images \
+              --repository-name "${ECR_REPOSITORY}" \
+              --image-ids imageTag="${GITHUB_SHA}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Image ${GITHUB_SHA} already in ECR - skipping build."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.image.outputs.exists == 'false'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push immutable :<git-sha> image
+        if: steps.image.outputs.exists == 'false'
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --build-arg REACT_APP_API_URL="${{ vars.REACT_APP_API_URL }}" \
+            --tag "${{ steps.vars.outputs.image }}" \
+            --push \
+            .
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform apply
+        working-directory: terraform/envs/${{ steps.vars.outputs.env }}
+        run: |
+          terraform init -input=false
+          terraform apply -input=false -auto-approve \
+            -var="container_image=${{ steps.vars.outputs.image }}"
+
+      - name: Wait for ECS service to reach steady state
+        run: |
+          aws ecs wait services-stable \
+            --cluster "rdicidr-${{ steps.vars.outputs.env }}-cluster" \
+            --services "rdicidr-${{ steps.vars.outputs.env }}-service"
+
+      - name: Deployment summary
+        working-directory: terraform/envs/${{ steps.vars.outputs.env }}
+        run: |
+          {
+            echo "### CD - ${{ steps.vars.outputs.env }}"
+            echo ""
+            echo "- image: \`${{ steps.vars.outputs.image }}\`"
+            echo "- url: $(terraform output -raw alb_url)"
+          } >> "$GITHUB_STEP_SUMMARY"

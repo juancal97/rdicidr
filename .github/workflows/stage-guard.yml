@@ -1,0 +1,21 @@
+name: stage-source-guard
+
+# Required status check on `stage`: a PR into stage is only allowed when its
+# head branch is `devel`.
+on:
+  pull_request:
+    branches:
+      - stage
+
+jobs:
+  stage-source-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only devel may open a PR into stage
+        run: |
+          echo "head: ${{ github.head_ref }}  ->  base: ${{ github.base_ref }}"
+          if [ "${{ github.head_ref }}" != "devel" ]; then
+            echo "::error::PRs into 'stage' must come from 'devel' (head was '${{ github.head_ref }}')."
+            exit 1
+          fi
+          echo "OK - source branch is devel."

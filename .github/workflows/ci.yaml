@@ -3,55 +3,55 @@ name: CI Pipeline
 on:
   push:
     branches:
-      - main
-      - 'feature-*'
+      - devel
+      - stage
+      - "feature/**"
+      - "bugfix/**"
   pull_request:
     branches:
-      - main
+      - devel
+      - stage
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   install:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '14'
+          node-version-file: ".nvmrc"
+          cache: npm
 
       - name: Install dependencies
-        run: npm install
-
-      - name: Cache node_modules
-        uses: actions/cache/save@v3
-        with:
-          path: node_modules
-          key: node-modules-${{ hashFiles('package-lock.json') }}
+        run: npm ci
 
   lint:
     needs: [install]
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '14'
+          node-version-file: ".nvmrc"
+          cache: npm
 
-      - name: Restore node_modules
-        uses: actions/cache/restore@v3
-        with:
-          path: node_modules
-          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - name: Install dependencies
+        run: npm ci
 
       - name: Run linter
         run: npm run lint
 
-      - name: Run formatter
+      - name: Check formatting
         run: npm run prettier
 
   test:
@@ -59,18 +59,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '14'
+          node-version-file: ".nvmrc"
+          cache: npm
 
-      - name: Restore node_modules
-        uses: actions/cache/restore@v3
-        with:
-          path: node_modules
-          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - name: Install dependencies
+        run: npm ci
 
       - name: Run tests
         env:
@@ -78,22 +76,20 @@ jobs:
         run: npm run test
 
   build:
-    needs: [lint]
+    needs: [lint, test]
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '14'
+          node-version-file: ".nvmrc"
+          cache: npm
 
-      - name: Restore node_modules
-        uses: actions/cache/restore@v3
-        with:
-          path: node_modules
-          key: deps-${{ hashFiles('package-lock.json') }}
+      - name: Install dependencies
+        run: npm ci
 
       - name: Build project
         run: npm run build
